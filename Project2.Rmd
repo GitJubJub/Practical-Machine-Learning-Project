@@ -1,0 +1,130 @@
+---
+title: "Applying a Machine Learning Technique to a Quality Activity Recognition Dataset"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+by A. Brignole
+(February - March 2016),
+Practical Machine Learning,
+Professor Jeff Leek, Ph.D.
+
+
+**Abstract:** Velloso et al. (2013) electronically collected data on the motions of six human participants that replicated a common muscle building exercise, lifting dumbbells. The purpose of this project was to create a predictive machine-learning algorithm in R that classifies the manner in which the participants lifted the dumbbell. A Random Forest predictive model was fit to 13,453 observations of data using the *caret* package in the R. A stratified sample (strata = 5, n =5,763) tested the validity of the 12-fold, cross-validated, Random Forest model. The accuracy of the pretest results were 99.0% (95% CI 98.7 - 99.2%, *p* < 0.001), with sensitivities for each class ranging from 96.5% to 100% and specificities ranging from 99.3% to 100%, suggesting an excellent model fit. A set of 20 test cases of data further checked the predictive capabilities of the model. The prediction of only six of the test cases matched the expected results (accuracy: 30%, 95% CI: 11.3 - 54.3%, *p* = 0.87). Given the high accuracy of the pretest, the author speculates that the small subset of 20 cases contains data from a non-conforming sub-population, transformed data, or other issues that the model did not consider in its design.
+
+###Introduction (Defining the Problem).###
+
+Velloso, Bulling, Gellerson, Ugulino, and Fuks (2013) collected data in order to ascertain whether a predictive machine learning model could inform individuals on how well an exercise was performed. To do so, the authors asked six human participants to 'curl' a dumbbell ten times according to five different methods. The participants wore electronic sensors on their hand, arm, and waist, with an additional sensor attached to the dumbbell itself. The sensors tracked the motion of the participants and the dumbbell over timed increments.  
+
+The five 'curling' methods simulated common weight-lifting techniques.  Only one 'curling' technique followed an instructionally sound method. The other four methods emulated common lifting mistakes.  In this way, the study classified the manner in which the participants exercised.  The overall premise of the study was to test whether real-time feedback to an individual would facilitate the weight lifting experience.  The column of data with the exercise method (the dependent variable, a.k.a. outcome variable) was listed as "classe".  In total, Velloso et al, collected or calculated one-hundred fifty-nine different metrics (independent variables, a.k.a. predictor variables).
+
+This paper utilizes the data collected by Velloso et al, and attempts to substantiate the claims that the data provide a means to predict the method of exercise.
+
+###Materials and Methods.###
+
+Velloso et al maintain the supporting documents for their study on the internet site <http://groupware.les.inf.puc-rio.br/har>. The data from Velloso et al was given as two datasets, a training set and a testing set. The two sets of data were read into R.
+```{r echo = TRUE, results = TRUE}
+     trainset<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+               stringsAsFactors = FALSE)
+     
+     testset<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+          stringsAsFactors = FALSE)
+```
+
+The training set had 160 variables (columns), and 19,622 observations (rows). The testing dataset had 160 variables and 20 observations. Not all columns and observations were included when formulating the model, only spatial quantifications, and user name.
+```{r echo = TRUE, results = FALSE}
+     ##Delete rows that are not no new_window.
+     noWindowTr <-trainset[trainset$new_window == "no",]
+     noWindowTe<-testset[testset$new_window == "no",]
+     
+     ##Delete Columns that are not in testing dataset.
+     namesetTr<-names(noWindowTr); namesetTe<-names(noWindowTe)
+     
+     deleteset<-c("amplitude", "avg", "kurtosis", "max", "min", "skewness", "stddev", "var")
+     
+     for(i in 1:8) {
+          var<-deleteset[i]
+     
+          DeleteColTr<-grep(var, namesetTr); DeleteColTe<-grep(var, namesetTe)
+          
+          if(i == 1){
+               NoColsTr<-DeleteColTr; NoColsTe<-DeleteColTe
+          } else {
+               SetTr<-DeleteColTr; NoColsTr<-c(NoColsTr,SetTr)
+               SetTe<-DeleteColTe; NoColsTe<-c(NoColsTe,SetTe)
+          }
+          RemoveColsTr<-sort(unique(NoColsTr)); RemoveColsTe<-sort(unique(NoColsTe))
+     }
+     varTrSet<-noWindowTr[,-c(1, 3, 4, 5, 6, 7, RemoveColsTr)]
+     varTeSet<-noWindowTe[,-c(1, 3, 4, 5, 6, 7, RemoveColsTe)]
+          
+     varTrSet$user_name <- as.factor(varTrSet$user_name)
+     varTeSet$user_name<-as.factor(varTeSet$user_name)
+     
+     varTrSet$classe<- as.factor(varTrSet$classe)
+```
+
+###Fitting the Predictive Model###
+
+A Random Forest Model was fit to the data. Random Forests typically perform well compared to other predictive algorithms. They iteratively test the probabilistic outcomes via decision trees. The outcomes are then aggregated in determination of the model. Velloso et al fit a Random Forest algorithm to the data, applying a leave-one-out cross-validation training method. This method is very resource intensive.  In the interest of time, this study fit a folded cross-validation method. 
+
+To run the Random Forest algorithm, the caret package was loaded into R.
+```{r echo = TRUE, results = FALSE, warning = FALSE, message = FALSE}
+     library(lattice); library(ggplot2);library(dplyr); library(caret); library(randomForest)
+```
+
+The training dataset was further partitioned into a pretest subset and an actual training subset.  The pretest subset offered a check of the results prior to comparison of the twenty test cases.
+
+```{r echo = TRUE, results = FALSE}
+     set.seed(1)
+     inTrain<-createDataPartition(varTrSet$classe, p = 0.7, list= FALSE)
+     
+     pretest<-varTrSet[-inTrain,]; training<-varTrSet[inTrain,]
+```
+
+A Random Forest Model was fit to the data, using a cross-validation of twelve folds. Running the code for twelve folds took longer than ten. The increase in folds was selected to reduce variability, and increase accuracy of the model results. A few attempts of fitting the model with fewer folds or greater replications returned equally good or less accurate results. The model with two randomly selected parameters was the most accurate fit. 
+
+```{r echo = TRUE, results = TRUE}
+     set.seed(2)
+     modRF<-train(classe~., data = training, method = "rf", trControl = trainControl("cv", 12, 1), verbose = FALSE)
+     modRF
+
+```
+
+Examining the final model results show an estimated out-of-bag error rate of 0.64%. A good result would be close to zero. These results confirmed that the model would be amenable for prediction.
+
+The variables that were most important in fitting the model are shown in the graph below.
+```{r echo = TRUE, results = TRUE, fig.width=12, fig.height = 16}
+     modRF$finalModel; 
+     plot(varImp(modRF), main = "Importance of Variables", xlab = "Importance Scores")
+     png(filename = "ImpPlot1.png", width = 480, height = 600)
+```
+
+###Testing the Model###
+
+To legitimize the model fit and test for overfitting, the subset, pretest data were compared to Random Forest model with the best fit. The accuracy of the model was a stunning 99.0% (95% CI: 98.7% - 99.2%, n = 5,763, *p* < 0.001), with sensitivities between 96.5% and 100%, and specificities between 99.3% and 100%. Truly remarkable.
+
+```{r echo = TRUE, results = TRUE}
+     pred1<-predict(modRF, pretest); confusionMatrix(pred1, pretest$classe)
+```
+
+However, comparing our model fit to the testing dataset, the matched results were much more disappointing. The accuracy was 30% (95% CI: 11.9 - 54.3%, n = 20, *p* = 0.87). From the previous accuracies based on random sampling, there may be additional explanation as to why these data did not fit our model (e.g.: transformed data, purposefully selected outliers, etc...).
+
+```{r echo = TRUE, results = TRUE}
+   #Check predictions.
+     varTeSet$user_name <- as.factor(varTeSet$user_name)
+     predFinal<-predict(modRF, varTeSet) 
+     
+     testwindows<-as.integer(unique(testset$num_window))
+     
+     checkwindows<-unique(trainset[trainset$num_window %in% testwindows ,c("num_window", "classe")])
+     
+     checkset<-merge(testset, checkwindows);  confusionMatrix(predFinal, checkset$classe)
+```
+
+
+**References**
+
+Velloso, E., Bulling, A., Gellersen, H., Ugulino, W., and Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13). Stuttgart, Germany: ACM SIGCHI, 2013.  Read more at <http://groupware.les.inf.puc-rio.br/har#ixzz40a8Ba8fh>
+
